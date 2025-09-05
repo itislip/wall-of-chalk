@@ -54,3 +54,27 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); f
   padding: 8px 10px; font-size: 12px; color: var(--muted); border-top: 1px solid #222;
 }
 .hint { color: var(--muted); text-align: center; padding: 20px; }
+
+.admin {
+  margin: 14px auto;
+  padding: 12px;
+  max-width: 720px;
+  background: #141416;
+  border: 1px solid #222;
+  border-radius: 12px;
+}
+.admin h2 { margin: 0 0 10px 0; font-size: 18px; }
+.admin-row { display: flex; gap: 8px; }
+.admin-row input {
+  flex: 1; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid #333; background: #0d0d0f; color: var(--fg);
+}
+.admin-list { margin-top: 12px; }
+.admin-list ul { list-style: none; padding: 0; margin: 0; }
+.admin-list li {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 10px; border: 1px solid #222; border-radius: 10px; margin-bottom: 6px;
+  background: #0f0f11;
+}
+.admin-list button { padding: 6px 10px; border-radius: 8px; }
+
