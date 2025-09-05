@@ -21,6 +21,16 @@ const uploadLabel = document.getElementById('uploadLabel');
 const fileInput = document.getElementById('fileInput');
 const board = document.getElementById('board');
 
+/* ===== Admin config ===== */
+const ADMIN_EMAILS = ["YOUR_ADMIN_EMAIL@gmail.com"]; // <-- change this
+
+/* ===== Admin UI refs ===== */
+const adminPanel = document.getElementById('adminPanel');
+const addEmailInput = document.getElementById('addEmail');
+const addEmailBtn = document.getElementById('addEmailBtn');
+const allowList = document.getElementById('allowList');
+
+
 /* ===== 4) Auth actions ===== */
 signinBtn.onclick = async () => {
   const provider = new firebase.auth.GoogleAuthProvider();
@@ -29,11 +39,18 @@ signinBtn.onclick = async () => {
 signoutBtn.onclick = () => auth.signOut();
 
 /* ===== 5) Auth state → toggle UI ===== */
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async (user) => {
   const signedIn = !!user;
   signinBtn.style.display = signedIn ? 'none' : '';
   signoutBtn.style.display = signedIn ? '' : 'none';
   uploadLabel.style.display = signedIn ? '' : 'none';
+
+  // Show admin panel only for admins
+  const isAdmin = signedIn && ADMIN_EMAILS.includes(user.email);
+  adminPanel.style.display = isAdmin ? '' : 'none';
+  if (isAdmin) refreshAllowlist();
+});
+
 });
 
 /* ===== 6) Live feed (most recent first) ===== */
