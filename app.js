@@ -1,14 +1,15 @@
-/* ===== 1) Firebase config — REPLACE with your values (Phase 3 step 6) ===== */
+/* ===== 1) Firebase config — YOUR real values ===== */
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyCD_alWS3Ema1psjirtGtTOPNRIZ4gq2Rc",
+  authDomain: "artifactsofus-wall.firebaseapp.com",
+  projectId: "artifactsofus-wall",
+  storageBucket: "artifactsofus-wall.appspot.com", // <- verify in Firebase Console
+  messagingSenderId: "452027716585",
+  appId: "1:452027716585:web:cba1656f9b8e09080cf178",
+  // measurementId is optional for this project
 };
 
-/* ===== 2) Init Firebase ===== */
+/* ===== 2) Init Firebase (compat SDK) ===== */
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
@@ -21,15 +22,14 @@ const uploadLabel = document.getElementById('uploadLabel');
 const fileInput = document.getElementById('fileInput');
 const board = document.getElementById('board');
 
-/* ===== Admin config ===== */
-const ADMIN_EMAILS = ["YOUR_ADMIN_EMAIL@gmail.com"]; // <-- change this
+/* ===== Admin config (CHANGE THIS to your email) ===== */
+const ADMIN_EMAILS = ["12gagegibson@gmail.com"]; // e.g., ["you@gmail.com"]
 
 /* ===== Admin UI refs ===== */
 const adminPanel = document.getElementById('adminPanel');
 const addEmailInput = document.getElementById('addEmail');
 const addEmailBtn = document.getElementById('addEmailBtn');
 const allowList = document.getElementById('allowList');
-
 
 /* ===== 4) Auth actions ===== */
 signinBtn.onclick = async () => {
@@ -38,7 +38,7 @@ signinBtn.onclick = async () => {
 };
 signoutBtn.onclick = () => auth.signOut();
 
-/* ===== 5) Auth state → toggle UI ===== */
+/* ===== 5) Auth state → toggle UI (and admin panel) ===== */
 auth.onAuthStateChanged(async (user) => {
   const signedIn = !!user;
   signinBtn.style.display = signedIn ? 'none' : '';
@@ -47,16 +47,13 @@ auth.onAuthStateChanged(async (user) => {
 
   // Show admin panel only for admins
   const isAdmin = signedIn && ADMIN_EMAILS.includes(user.email);
-  adminPanel.style.display = isAdmin ? '' : 'none';
+  if (adminPanel) adminPanel.style.display = isAdmin ? '' : 'none';
   if (isAdmin) refreshAllowlist();
-});
-
 });
 
 /* ===== 6) Live feed (most recent first) ===== */
 const q = db.collection('items').orderBy('createdAt', 'desc').limit(400);
 q.onSnapshot(snap => {
-  // Simple re-render for clarity
   board.innerHTML = '';
   if (snap.empty) {
     board.innerHTML = `<div class="hint">No uploads yet. Sign in and add a photo or video.</div>`;
@@ -83,11 +80,61 @@ q.onSnapshot(snap => {
 
 /* ===== 4.2) Invite-only uploads: allowlist check ===== */
 async function isAllowedToUpload(email) {
-  // Firestore: collection 'allowedUsers' with doc IDs equal to emails
-  // Example doc path: allowedUsers/alice@example.com
+  // Firestore collection 'allowedUsers' with doc IDs equal to emails
+  // Example: allowedUsers/alice@example.com
   const docRef = db.collection('allowedUsers').doc(email);
   const snap = await docRef.get();
   return snap.exists; // exists = allowed
+}
+
+/* ===== 4.2 Admin helpers ===== */
+async function refreshAllowlist() {
+  if (!allowList) return;
+  allowList.innerHTML = '<li class="hint">Loading…</li>';
+  try {
+    const snap = await db.collection('allowedUsers').get();
+    if (snap.empty) {
+      allowList.innerHTML = '<li class="hint">No allowed users yet.</li>';
+      return;
+    }
+    allowList.innerHTML = '';
+    snap.forEach(doc => {
+      const email = doc.id;
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span>${email}</span>
+        <button class="btn btn-ghost" data-email="${email}">Remove</button>
+      `;
+      allowList.appendChild(li);
+    });
+
+    // Remove buttons
+    allowList.querySelectorAll('button[data-email]').forEach(btn => {
+      btn.onclick = async () => {
+        const email = btn.getAttribute('data-email');
+        if (!confirm(`Remove ${email} from allowlist?`)) return;
+        await db.collection('allowedUsers').doc(email).delete();
+        refreshAllowlist();
+      };
+    });
+  } catch (e) {
+    allowList.innerHTML = `<li class="hint">Error loading list</li>`;
+    console.error(e);
+  }
+}
+
+if (addEmailBtn) {
+  addEmailBtn.onclick = async () => {
+    const email = (addEmailInput.value || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) return alert('Enter a valid email');
+    await db.collection('allowedUsers').doc(email).set({
+      invited: true,
+      by: auth.currentUser?.email || null,
+      at: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    addEmailInput.value = '';
+    refreshAllowlist();
+  };
 }
 
 /* ===== 7) Upload flow ===== */
@@ -105,7 +152,7 @@ fileInput.onchange = async (e) => {
   const user = auth.currentUser;
   if (!user) return alert('Please sign in first.');
 
-  /* >>> Invite-only gate (4.2) — block if email not on the list <<< */
+  // Invite-only gate
   const ok = await isAllowedToUpload(user.email);
   if (!ok) {
     alert('You are not allowed to upload yet. Ask the board owner to add your email.');
@@ -120,7 +167,7 @@ fileInput.onchange = async (e) => {
   await ref.put(file);
   const url = await ref.getDownloadURL();
 
-  // (Optional) you could generate a poster for videos server-side later
+  // Save metadata
   const doc = {
     url,
     type: isVideo ? 'video' : 'image',
