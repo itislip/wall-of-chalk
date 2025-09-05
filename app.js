@@ -136,11 +136,39 @@ if (addEmailBtn) {
   };
 }
 
-/* ===== 7) Upload flow (with progress + error surfacing) ===== */
-fileInput.onchange = async (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  e.target.value = ''; // reset input
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == "12gagegibson@gmail.com";
+    }
+
+    // Public board items
+    match /items/{id} {
+      allow read: if true;
+
+      // Allow creates if admin OR on the allowlist
+      allow create: if signedIn() && (
+        isAdmin() ||
+        exists(/databases/$(database)/documents/allowedUsers/$(request.auth.token.email))
+      );
+
+      // Owners can edit/delete their own docs
+      allow update, delete: if signedIn() && request.auth.uid == resource.data.ownerId;
+    }
+
+    // Allowlist docs
+    match /allowedUsers/{email} {
+      // Admin manages the list (read/write)
+      allow read, write: if isAdmin();
+
+      // (Optional) if you still want the client to check its own allowlist doc, add:
+      // allow read: if isAdmin() || (signedIn() && request.auth.token.email == email);
+    }
+  }
+}
+
 
   // Basic client-side checks
   const isImage = file.type.startsWith('image/');
