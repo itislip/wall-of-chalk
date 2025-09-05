@@ -18,6 +18,20 @@
         <input id="fileInput" type="file" accept="image/*,video/*" hidden />
       </label>
     </div>
+
+    <!-- Admin Panel (only visible to admins) -->
+<section id="adminPanel" class="admin" style="display:none;">
+  <h2>Invite Uploaders</h2>
+  <div class="admin-row">
+    <input id="addEmail" type="email" placeholder="friend@example.com" />
+    <button id="addEmailBtn" class="btn">Add</button>
+  </div>
+  <div class="admin-list">
+    <h3>Allowed Emails</h3>
+    <ul id="allowList"></ul>
+  </div>
+</section>
+
   </header>
 
   <!-- Pan/zoom viewport -->
