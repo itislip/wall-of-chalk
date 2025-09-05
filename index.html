@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Friends Board</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Top bar -->
+  <header class="bar">
+    <div class="brand">Friends Board</div>
+    <div class="actions">
+      <button id="signinBtn" class="btn">Sign in with Google</button>
+      <button id="signoutBtn" class="btn btn-ghost" style="display:none;">Sign out</button>
+      <label id="uploadLabel" class="btn" style="display:none;">
+        Upload
+        <input id="fileInput" type="file" accept="image/*,video/*" hidden />
+      </label>
+    </div>
+  </header>
+
+  <!-- Pan/zoom viewport -->
+  <main id="pan-container">
+    <div id="pan-content">
+      <div id="board" class="board"></div>
+    </div>
+  </main>
+
+  <!-- Libraries (no build tools) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-storage-compat.js"></script>
+  <script src="https://unpkg.com/@panzoom/panzoom@9.4.0/dist/panzoom.min.js"></script>
+
+  <!-- Your app -->
+  <script src="app.js"></script>
+</body>
+</html>
