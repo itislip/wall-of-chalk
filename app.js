@@ -6,7 +6,7 @@ const firebaseConfig = {
   storageBucket: "artifactsofus-wall.appspot.com", // <- verify in Firebase Console
   messagingSenderId: "452027716585",
   appId: "1:452027716585:web:cba1656f9b8e09080cf178",
-  // measurementId is optional for this project
+  // measurementId is optional
 };
 
 /* ===== 2) Init Firebase (compat SDK) ===== */
@@ -22,8 +22,8 @@ const uploadLabel = document.getElementById('uploadLabel');
 const fileInput = document.getElementById('fileInput');
 const board = document.getElementById('board');
 
-/* ===== Admin config (CHANGE THIS to your email) ===== */
-const ADMIN_EMAILS = ["12gagegibson@gmail.com"]; // e.g., ["you@gmail.com"]
+/* ===== Admin config (CHANGE ONLY IF NEEDED) ===== */
+const ADMIN_EMAILS = ["12gagegibson@gmail.com"];
 
 /* ===== Admin UI refs ===== */
 const adminPanel = document.getElementById('adminPanel');
@@ -53,13 +53,13 @@ auth.onAuthStateChanged(async (user) => {
 
 /* ===== 6) Live feed (most recent first) ===== */
 const q = db.collection('items').orderBy('createdAt', 'desc').limit(400);
-q.onSnapshot(snap => {
+q.onSnapshot((snap) => {
   board.innerHTML = '';
   if (snap.empty) {
     board.innerHTML = `<div class="hint">No uploads yet. Sign in and add a photo or video.</div>`;
     return;
   }
-  snap.forEach(doc => {
+  snap.forEach((doc) => {
     const it = doc.data();
     const el = document.createElement('figure');
     el.className = 'item';
@@ -81,7 +81,6 @@ q.onSnapshot(snap => {
 /* ===== 4.2) Invite-only uploads: allowlist check ===== */
 async function isAllowedToUpload(email) {
   // Firestore collection 'allowedUsers' with doc IDs equal to emails
-  // Example: allowedUsers/alice@example.com
   const docRef = db.collection('allowedUsers').doc(email);
   const snap = await docRef.get();
   return snap.exists; // exists = allowed
@@ -98,7 +97,7 @@ async function refreshAllowlist() {
       return;
     }
     allowList.innerHTML = '';
-    snap.forEach(doc => {
+    snap.forEach((doc) => {
       const email = doc.id;
       const li = document.createElement('li');
       li.innerHTML = `
@@ -109,7 +108,7 @@ async function refreshAllowlist() {
     });
 
     // Remove buttons
-    allowList.querySelectorAll('button[data-email]').forEach(btn => {
+    allowList.querySelectorAll('button[data-email]').forEach((btn) => {
       btn.onclick = async () => {
         const email = btn.getAttribute('data-email');
         if (!confirm(`Remove ${email} from allowlist?`)) return;
@@ -137,7 +136,7 @@ if (addEmailBtn) {
   };
 }
 
-/* ===== 7) Upload flow ===== */
+/* ===== 7) Upload flow (with progress + error surfacing) ===== */
 fileInput.onchange = async (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
@@ -146,37 +145,53 @@ fileInput.onchange = async (e) => {
   // Basic client-side checks
   const isImage = file.type.startsWith('image/');
   const isVideo = file.type.startsWith('video/');
-  if (!isImage && !isVideo) return alert('Only images or videos are allowed.');
-  if (file.size > 20 * 1024 * 1024) return alert('Max file size is 20MB for now.');
+  if (!isImage && !isVideo) { alert('Only images or videos are allowed.'); return; }
+  if (file.size > 20 * 1024 * 1024) { alert('Max file size is 20MB for now.'); return; }
 
   const user = auth.currentUser;
-  if (!user) return alert('Please sign in first.');
+  if (!user) { alert('Please sign in first.'); return; }
 
   // Invite-only gate
-  const ok = await isAllowedToUpload(user.email);
-  if (!ok) {
-    alert('You are not allowed to upload yet. Ask the board owner to add your email.');
+  try {
+    const ok = await isAllowedToUpload(user.email);
+    if (!ok) { alert('You are not allowed to upload yet. Ask the board owner to add your email.'); return; }
+  } catch (err) {
+    console.error('Allowlist check failed:', err);
+    alert('Could not verify permissions. Try again in a moment.');
     return;
   }
 
-  // Storage path
-  const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g,'_')}`;
-  const ref = storage.ref().child(`uploads/${user.uid}/${safeName}`);
+  // UI feedback
+  const originalLabel = uploadLabel.textContent;
+  uploadLabel.textContent = 'Uploading…';
+  uploadLabel.style.opacity = 0.6;
+  uploadLabel.style.pointerEvents = 'none';
 
-  // Upload
-  await ref.put(file);
-  const url = await ref.getDownloadURL();
+  try {
+    // Storage path
+    const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g, '_')}`;
+    const ref = storage.ref().child(`uploads/${user.uid}/${safeName}`);
 
-  // Save metadata
-  const doc = {
-    url,
-    type: isVideo ? 'video' : 'image',
-    ownerId: user.uid,
-    ownerEmail: user.email,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-  };
+    // Upload
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
 
-  await db.collection('items').add(doc);
+    // Save metadata
+    await db.collection('items').add({
+      url,
+      type: isVideo ? 'video' : 'image',
+      ownerId: user.uid,
+      ownerEmail: user.email,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    console.error('Upload failed:', err);
+    alert(`Upload failed: ${err?.message || err}`);
+  } finally {
+    uploadLabel.style.opacity = 1;
+    uploadLabel.style.pointerEvents = '';
+    uploadLabel.textContent = originalLabel || 'Upload';
+  }
 };
 
 /* ===== 8) Pan/Zoom setup ===== */
@@ -192,3 +207,4 @@ const pz = Panzoom(panContent, {
 panContainer.addEventListener('wheel', pz.zoomWithWheel);
 
 /* Hint: two-finger pinch and drag work on touch devices because we set touch-action: none */
+
