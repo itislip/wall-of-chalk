@@ -1,0 +1,56 @@
+:root {
+  --bg: #0b0b0c;
+  --fg: #f5f5f7;
+  --muted: #b5b5be;
+  --card: #141416;
+  --accent: #ffffff;
+  --gap: 12px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, Arial, sans-serif; }
+
+.bar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; background: rgba(20,20,22,0.7); backdrop-filter: blur(8px);
+  border-bottom: 1px solid #222;
+}
+.brand { font-weight: 700; letter-spacing: 0.3px; }
+.actions { display: flex; gap: 8px; }
+
+.btn {
+  background: var(--accent); color: #111; border: 0; padding: 8px 12px;
+  border-radius: 10px; font-weight: 600; cursor: pointer;
+}
+.btn-ghost { background: transparent; color: var(--fg); border: 1px solid #333; }
+
+#pan-container {
+  position: relative; height: calc(100vh - 54px); overflow: hidden; border-top: 1px solid #111;
+}
+#pan-content {
+  /* This element is what we pan/zoom */
+  touch-action: none; /* enable pinch-zoom */
+  will-change: transform;
+  width: max(100%, 1200px);
+  height: max(100%, 1000px);
+  display: flex; align-items: flex-start; justify-content: center;
+}
+.board {
+  padding: 20px;
+  column-width: 240px;     /* Masonry-like columns */
+  column-gap: var(--gap);
+  max-width: 2600px;       /* so it doesn’t become infinitely wide */
+}
+
+.item {
+  break-inside: avoid; margin: 0 0 var(--gap) 0; background: var(--card);
+  border: 1px solid #222; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,.25);
+}
+.item img, .item video {
+  display: block; width: 100%; height: auto; background: #000;
+}
+.item .meta {
+  padding: 8px 10px; font-size: 12px; color: var(--muted); border-top: 1px solid #222;
+}
+.hint { color: var(--muted); text-align: center; padding: 20px; }
