@@ -64,6 +64,15 @@ q.onSnapshot(snap => {
   });
 });
 
+/* ===== 4.2) Invite-only uploads: allowlist check ===== */
+async function isAllowedToUpload(email) {
+  // Firestore: collection 'allowedUsers' with doc IDs equal to emails
+  // Example doc path: allowedUsers/alice@example.com
+  const docRef = db.collection('allowedUsers').doc(email);
+  const snap = await docRef.get();
+  return snap.exists; // exists = allowed
+}
+
 /* ===== 7) Upload flow ===== */
 fileInput.onchange = async (e) => {
   const file = e.target.files && e.target.files[0];
@@ -78,6 +87,13 @@ fileInput.onchange = async (e) => {
 
   const user = auth.currentUser;
   if (!user) return alert('Please sign in first.');
+
+  /* >>> Invite-only gate (4.2) — block if email not on the list <<< */
+  const ok = await isAllowedToUpload(user.email);
+  if (!ok) {
+    alert('You are not allowed to upload yet. Ask the board owner to add your email.');
+    return;
+  }
 
   // Storage path
   const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g,'_')}`;
