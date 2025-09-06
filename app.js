@@ -16,20 +16,20 @@ const db = firebase.firestore();
 const storage = firebase.storage();
 
 /* ===== 3) UI refs ===== */
-const signinBtn = document.getElementById('signinBtn');
-const signoutBtn = document.getElementById('signoutBtn');
+const signinBtn   = document.getElementById('signinBtn');
+const signoutBtn  = document.getElementById('signoutBtn');
 const uploadLabel = document.getElementById('uploadLabel');
-const fileInput = document.getElementById('fileInput');
-const board = document.getElementById('board');
+const fileInput   = document.getElementById('fileInput');
+const board       = document.getElementById('board');
 
 /* ===== Admin config ===== */
 const ADMIN_EMAILS = ["12gagegibson@gmail.com"];
 
 /* ===== Admin UI refs ===== */
-const adminPanel = document.getElementById('adminPanel');
+const adminPanel    = document.getElementById('adminPanel');
 const addEmailInput = document.getElementById('addEmail');
-const addEmailBtn = document.getElementById('addEmailBtn');
-const allowList = document.getElementById('allowList');
+const addEmailBtn   = document.getElementById('addEmailBtn');
+const allowList     = document.getElementById('allowList');
 
 /* ===== 4) Auth actions ===== */
 signinBtn.onclick = async () => {
@@ -46,9 +46,9 @@ signoutBtn.onclick = () => auth.signOut();
 /* ===== 5) Auth state → toggle UI (and admin panel) ===== */
 auth.onAuthStateChanged(async (user) => {
   const signedIn = !!user;
-  signinBtn.style.display = signedIn ? 'none' : '';
-  signoutBtn.style.display = signedIn ? '' : 'none';
-  uploadLabel.style.display = signedIn ? '' : 'none';
+  if (signinBtn)   signinBtn.style.display   = signedIn ? 'none' : '';
+  if (signoutBtn)  signoutBtn.style.display  = signedIn ? '' : 'none';
+  if (uploadLabel) uploadLabel.style.display = signedIn ? '' : 'none';
 
   // Show admin panel only for admins
   const isAdmin = signedIn && ADMIN_EMAILS.includes(user.email);
@@ -136,13 +136,13 @@ if (addEmailBtn) {
   };
 }
 
-/* ===== 7) Upload flow (rules-enforced allowlist + clear errors) ===== */
+/* ===== 7) Upload flow (progress + precise error messages) ===== */
 fileInput.onchange = async (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
-  e.target.value = '';
+  e.target.value = ''; // reset
 
-  // Basic client-side checks
+  // Basic checks
   const isImage = file.type.startsWith('image/');
   const isVideo = file.type.startsWith('video/');
   if (!isImage && !isVideo) { alert('Only images or videos are allowed.'); return; }
@@ -151,24 +151,35 @@ fileInput.onchange = async (e) => {
   const user = auth.currentUser;
   if (!user) { alert('Please sign in first.'); return; }
 
-  // UI feedback
+  // UI helpers
   const originalLabel = uploadLabel.textContent;
-  uploadLabel.textContent = 'Uploading…';
-  uploadLabel.style.opacity = 0.6;
-  uploadLabel.style.pointerEvents = 'none';
-
-  // Storage path
-  const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g, '_')}`;
-  const ref = storage.ref().child(`uploads/${user.uid}/${safeName}`);
+  const setLabel  = (t) => { uploadLabel.textContent = t; uploadLabel.style.opacity = 0.6; uploadLabel.style.pointerEvents = 'none'; };
+  const resetLabel = () => { uploadLabel.textContent = originalLabel || 'Upload'; uploadLabel.style.opacity = 1; uploadLabel.style.pointerEvents = ''; };
 
   try {
-    // Upload to Storage
-    await ref.put(file);
+    const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g, '_')}`;
+    const ref = storage.ref().child(`uploads/${user.uid}/${safeName}`);
 
-    // Get CDN URL
+    // Start upload with progress
+    const task = ref.put(file);
+    setLabel('Uploading 0%…');
+
+    await new Promise((resolve, reject) => {
+      task.on(
+        'state_changed',
+        (snap) => {
+          const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
+          setLabel(`Uploading ${pct.toFixed(0)}%…`);
+        },
+        (err) => reject(err),
+        () => resolve()
+      );
+    });
+
+    // Get URL
     const url = await ref.getDownloadURL();
 
-    // Create Firestore item (rules will allow only if admin or on allowlist)
+    // Firestore item (rules enforce allowlist/admin on create)
     await db.collection('items').add({
       url,
       type: isVideo ? 'video' : 'image',
@@ -176,28 +187,31 @@ fileInput.onchange = async (e) => {
       ownerEmail: user.email,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
+
+    resetLabel();
   } catch (err) {
     console.error('Upload failed:', err);
-    // Try to clean up orphaned blob if Firestore write failed
-    try { await ref.delete(); } catch (_) {}
+    const msg = String(err?.code || err?.message || err);
 
-    if (err && (err.code === 'permission-denied' || /PERMISSION/i.test(String(err)))) {
-      alert('Not allowed to upload yet. Ask the board owner to add your email to the allowlist.');
-    } else if (err && /storage|bucket|unauthorized|quota|billing/i.test(String(err))) {
-      alert('Storage error. Make sure Cloud Storage is enabled (may require Blaze billing) and your bucket name matches.');
+    if (msg.includes('storage/unauthorized') || /permission|unauthorized/i.test(msg)) {
+      alert('Storage permission error. Enable Storage and verify rules. New projects may require Blaze billing to use Storage.');
+    } else if (msg.includes('storage/bucket-not-found') || /No bucket/i.test(msg)) {
+      alert('Bucket not found. In app.js, storageBucket must exactly match Project settings → Storage bucket.');
+    } else if (msg.includes('storage/quota-exceeded')) {
+      alert('Storage quota exceeded.');
+    } else if (msg.includes('permission-denied')) {
+      alert('Not allowed to create item. Add your email to the allowlist (Admin panel) or sign in as the admin email.');
     } else {
-      alert(`Upload failed: ${err?.message || err}`);
+      alert(`Upload failed: ${msg}`);
     }
   } finally {
-    uploadLabel.style.opacity = 1;
-    uploadLabel.style.pointerEvents = '';
-    uploadLabel.textContent = originalLabel || 'Upload';
+    resetLabel();
   }
 };
 
 /* ===== 8) Pan/Zoom setup ===== */
 const panContainer = document.getElementById('pan-container');
-const panContent = document.getElementById('pan-content');
+const panContent   = document.getElementById('pan-content');
 
 const pz = Panzoom(panContent, {
   maxScale: 4,
@@ -208,3 +222,42 @@ const pz = Panzoom(panContent, {
 panContainer.addEventListener('wheel', pz.zoomWithWheel);
 
 /* Hint: two-finger pinch and drag work on touch devices because we set touch-action: none */
+
+/* ===== 9) Optional: quick smoke tests (run from DevTools Console) ===== */
+// window.smokeStorage(): writes a 1x1 PNG to Storage and logs a URL if Storage is working
+window.smokeStorage = async () => {
+  try {
+    const u = auth.currentUser;
+    if (!u) return console.log('Sign in first');
+    console.log('Bucket in code:', firebase.app().options.storageBucket);
+    const dataURL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
+    const blob = await (await fetch(dataURL)).blob();
+    const name = `smoke-${Date.now()}.png`;
+    const ref = storage.ref().child(`uploads/${u.uid}/${name}`);
+    await ref.put(blob);
+    const url = await ref.getDownloadURL();
+    console.log('Storage OK. URL:', url);
+    return url;
+  } catch (e) {
+    console.error('smokeStorage error:', e);
+  }
+};
+
+// window.smokeFirestore(): adds a placeholder image doc to items
+window.smokeFirestore = async () => {
+  try {
+    const u = auth.currentUser;
+    if (!u) return console.log('Sign in first');
+    await db.collection('items').add({
+      url: 'https://via.placeholder.com/800x500.png?text=Hello',
+      type: 'image',
+      ownerId: u.uid,
+      ownerEmail: u.email,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log('Firestore OK — check the board for a placeholder card.');
+  } catch (e) {
+    console.error('smokeFirestore error:', e);
+  }
+};
+
