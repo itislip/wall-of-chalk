@@ -32,16 +32,18 @@ const addEmailBtn   = document.getElementById('addEmailBtn');
 const allowList     = document.getElementById('allowList');
 
 /* ===== 4) Auth actions ===== */
-signinBtn.onclick = async () => {
-  try {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithPopup(provider);
-  } catch (err) {
-    console.error('Sign-in failed:', err);
-    alert(`Sign-in failed: ${err?.message || err}`);
-  }
-};
-signoutBtn.onclick = () => auth.signOut();
+if (signinBtn) {
+  signinBtn.onclick = async () => {
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithPopup(provider);
+    } catch (err) {
+      console.error('Sign-in failed:', err);
+      alert(`Sign-in failed: ${err?.message || err}`);
+    }
+  };
+}
+if (signoutBtn) signoutBtn.onclick = () => auth.signOut();
 
 /* ===== 5) Auth state → toggle UI (and admin panel) ===== */
 auth.onAuthStateChanged(async (user) => {
@@ -59,6 +61,7 @@ auth.onAuthStateChanged(async (user) => {
 /* ===== 6) Live feed (most recent first) ===== */
 const q = db.collection('items').orderBy('createdAt', 'desc').limit(400);
 q.onSnapshot((snap) => {
+  if (!board) return;                // guard against missing DOM
   board.innerHTML = '';
   if (snap.empty) {
     board.innerHTML = `<div class="hint">No uploads yet. Sign in and add a photo or video.</div>`;
@@ -137,94 +140,95 @@ if (addEmailBtn) {
 }
 
 /* ===== 7) Upload flow (progress + precise error messages) ===== */
-fileInput.onchange = async (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  e.target.value = ''; // reset
+if (fileInput) {
+  fileInput.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    e.target.value = ''; // reset
 
-  // Basic checks
-  const isImage = file.type.startsWith('image/');
-  const isVideo = file.type.startsWith('video/');
-  if (!isImage && !isVideo) { alert('Only images or videos are allowed.'); return; }
-  if (file.size > 20 * 1024 * 1024) { alert('Max file size is 20MB for now.'); return; }
+    // Basic checks
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    if (!isImage && !isVideo) { alert('Only images or videos are allowed.'); return; }
+    if (file.size > 20 * 1024 * 1024) { alert('Max file size is 20MB for now.'); return; }
 
-  const user = auth.currentUser;
-  if (!user) { alert('Please sign in first.'); return; }
+    const user = auth.currentUser;
+    if (!user) { alert('Please sign in first.'); return; }
 
-  // UI helpers
-  const originalLabel = uploadLabel.textContent;
-  const setLabel  = (t) => { uploadLabel.textContent = t; uploadLabel.style.opacity = 0.6; uploadLabel.style.pointerEvents = 'none'; };
-  const resetLabel = () => { uploadLabel.textContent = originalLabel || 'Upload'; uploadLabel.style.opacity = 1; uploadLabel.style.pointerEvents = ''; };
+    // UI helpers
+    const originalLabel = uploadLabel.textContent;
+    const setLabel  = (t) => { uploadLabel.textContent = t; uploadLabel.style.opacity = 0.6; uploadLabel.style.pointerEvents = 'none'; };
+    const resetLabel = () => { uploadLabel.textContent = originalLabel || 'Upload'; uploadLabel.style.opacity = 1; uploadLabel.style.pointerEvents = ''; };
 
-  try {
-    const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g, '_')}`;
-    const ref = storage.ref().child(`uploads/${user.uid}/${safeName}`);
+    try {
+      const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g, '_')}`;
+      const ref = storage.ref().child(`uploads/${user.uid}/${safeName}`);
 
-    // Start upload with progress
-    const task = ref.put(file);
-    setLabel('Uploading 0%…');
+      // Start upload with explicit metadata so contentType is preserved
+      const task = ref.put(file, { contentType: file.type });
+      setLabel('Uploading 0%…');
 
-    await new Promise((resolve, reject) => {
-      task.on(
-        'state_changed',
-        (snap) => {
-          const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
-          setLabel(`Uploading ${pct.toFixed(0)}%…`);
-        },
-        (err) => reject(err),
-        () => resolve()
-      );
-    });
+      await new Promise((resolve, reject) => {
+        task.on(
+          'state_changed',
+          (snap) => {
+            const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
+            setLabel(`Uploading ${pct.toFixed(0)}%…`);
+          },
+          (err) => reject(err),
+          () => resolve()
+        );
+      });
 
-    // Get URL
-    const url = await ref.getDownloadURL();
+      // Get URL
+      const url = await ref.getDownloadURL();
 
-    // Firestore item (rules enforce allowlist/admin on create)
-    await db.collection('items').add({
-      url,
-      type: isVideo ? 'video' : 'image',
-      ownerId: user.uid,
-      ownerEmail: user.email,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+      // Firestore item (rules enforce allowlist/admin on create)
+      await db.collection('items').add({
+        url,
+        type: isVideo ? 'video' : 'image',
+        ownerId: user.uid,
+        ownerEmail: user.email,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
 
-    resetLabel();
-  } catch (err) {
-    console.error('Upload failed:', err);
-    const msg = String(err?.code || err?.message || err);
+      resetLabel();
+    } catch (err) {
+      console.error('Upload failed:', err);
+      const msg = String(err?.code || err?.message || err);
 
-    if (msg.includes('storage/unauthorized') || /permission|unauthorized/i.test(msg)) {
-      alert('Storage permission error. Enable Storage and verify rules. New projects may require Blaze billing to use Storage.');
-    } else if (msg.includes('storage/bucket-not-found') || /No bucket/i.test(msg)) {
-      alert('Bucket not found. In app.js, storageBucket must exactly match Project settings → Storage bucket.');
-    } else if (msg.includes('storage/quota-exceeded')) {
-      alert('Storage quota exceeded.');
-    } else if (msg.includes('permission-denied')) {
-      alert('Not allowed to create item. Add your email to the allowlist (Admin panel) or sign in as the admin email.');
-    } else {
-      alert(`Upload failed: ${msg}`);
+      if (msg.includes('storage/unauthorized') || /permission|unauthorized/i.test(msg)) {
+        alert('Storage permission error. Enable Storage and verify rules. New projects may require Blaze billing to use Storage.');
+      } else if (msg.includes('storage/bucket-not-found') || /No bucket/i.test(msg)) {
+        alert('Bucket not found. In app.js, storageBucket must exactly match Project settings → Storage bucket.');
+      } else if (msg.includes('storage/quota-exceeded')) {
+        alert('Storage quota exceeded.');
+      } else if (msg.includes('permission-denied')) {
+        alert('Not allowed to create item. Add your email to the allowlist (Admin panel) or sign in as the admin email.');
+      } else {
+        alert(`Upload failed: ${msg}`);
+      }
+    } finally {
+      resetLabel();
     }
-  } finally {
-    resetLabel();
-  }
-};
+  };
+}
 
 /* ===== 8) Pan/Zoom setup ===== */
 const panContainer = document.getElementById('pan-container');
 const panContent   = document.getElementById('pan-content');
 
-const pz = Panzoom(panContent, {
-  maxScale: 4,
-  minScale: 0.5,
-  step: 0.08,
-  contain: 'outside',
-});
-panContainer.addEventListener('wheel', pz.zoomWithWheel);
-
-/* Hint: two-finger pinch and drag work on touch devices because we set touch-action: none */
+if (panContainer && panContent) {
+  const pz = Panzoom(panContent, {
+    maxScale: 4,
+    minScale: 0.5,
+    step: 0.08,
+    contain: 'outside',
+  });
+  panContainer.addEventListener('wheel', pz.zoomWithWheel);
+}
 
 /* ===== 9) Optional: quick smoke tests (run from DevTools Console) ===== */
-// window.smokeStorage(): writes a 1x1 PNG to Storage and logs a URL if Storage is working
 window.smokeStorage = async () => {
   try {
     const u = auth.currentUser;
@@ -234,7 +238,7 @@ window.smokeStorage = async () => {
     const blob = await (await fetch(dataURL)).blob();
     const name = `smoke-${Date.now()}.png`;
     const ref = storage.ref().child(`uploads/${u.uid}/${name}`);
-    await ref.put(blob);
+    await ref.put(blob, { contentType: 'image/png' });
     const url = await ref.getDownloadURL();
     console.log('Storage OK. URL:', url);
     return url;
@@ -243,7 +247,6 @@ window.smokeStorage = async () => {
   }
 };
 
-// window.smokeFirestore(): adds a placeholder image doc to items
 window.smokeFirestore = async () => {
   try {
     const u = auth.currentUser;
