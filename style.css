@@ -29,8 +29,7 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); f
   position: relative; height: calc(100vh - 54px); overflow: hidden; border-top: 1px solid #111;
 }
 #pan-content {
-  /* This element is what we pan/zoom */
-  touch-action: none; /* enable pinch-zoom */
+  touch-action: none; /* pinch-zoom */
   will-change: transform;
   width: max(100%, 1200px);
   height: max(100%, 1000px);
@@ -40,7 +39,7 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); f
   padding: 20px;
   column-width: 240px;     /* Masonry-like columns */
   column-gap: var(--gap);
-  max-width: 2600px;       /* so it doesn’t become infinitely wide */
+  max-width: 2600px;
 }
 
 .item {
@@ -77,4 +76,3 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); f
   background: #0f0f11;
 }
 .admin-list button { padding: 6px 10px; border-radius: 8px; }
-
