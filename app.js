@@ -3,7 +3,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyCD_alWS3Ema1psjirtGtTOPNRIZ4gq2Rc",
   authDomain: "artifactsofus-wall.firebaseapp.com",
   projectId: "artifactsofus-wall",
-  storageBucket: "artifactsofus-wall.appspot.com", // <- verify in Firebase Console
+  storageBucket: "artifactsofus-wall.appspot.com", // verify in Firebase Console
   messagingSenderId: "452027716585",
   appId: "1:452027716585:web:cba1656f9b8e09080cf178",
   // measurementId is optional
@@ -22,7 +22,7 @@ const uploadLabel = document.getElementById('uploadLabel');
 const fileInput = document.getElementById('fileInput');
 const board = document.getElementById('board');
 
-/* ===== Admin config (CHANGE ONLY IF NEEDED) ===== */
+/* ===== Admin config ===== */
 const ADMIN_EMAILS = ["12gagegibson@gmail.com"];
 
 /* ===== Admin UI refs ===== */
@@ -33,8 +33,13 @@ const allowList = document.getElementById('allowList');
 
 /* ===== 4) Auth actions ===== */
 signinBtn.onclick = async () => {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  await auth.signInWithPopup(provider);
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.signInWithPopup(provider);
+  } catch (err) {
+    console.error('Sign-in failed:', err);
+    alert(`Sign-in failed: ${err?.message || err}`);
+  }
 };
 signoutBtn.onclick = () => auth.signOut();
 
@@ -78,15 +83,7 @@ q.onSnapshot((snap) => {
   });
 });
 
-/* ===== 4.2) Invite-only uploads: allowlist check ===== */
-async function isAllowedToUpload(email) {
-  // Firestore collection 'allowedUsers' with doc IDs equal to emails
-  const docRef = db.collection('allowedUsers').doc(email);
-  const snap = await docRef.get();
-  return snap.exists; // exists = allowed
-}
-
-/* ===== 4.2 Admin helpers ===== */
+/* ===== Admin helpers ===== */
 async function refreshAllowlist() {
   if (!allowList) return;
   allowList.innerHTML = '<li class="hint">Loading…</li>';
@@ -117,8 +114,11 @@ async function refreshAllowlist() {
       };
     });
   } catch (e) {
-    allowList.innerHTML = `<li class="hint">Error loading list</li>`;
-    console.error(e);
+    console.error('Allowlist load error:', e);
+    const msg = (e && e.code === 'permission-denied')
+      ? 'Access denied. Check Firestore rules and that you are signed in as the admin email.'
+      : 'Error loading list.';
+    allowList.innerHTML = `<li class="hint">${msg}</li>`;
   }
 }
 
@@ -136,39 +136,11 @@ if (addEmailBtn) {
   };
 }
 
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function isAdmin() {
-      return signedIn() && request.auth.token.email == "12gagegibson@gmail.com";
-    }
-
-    // Public board items
-    match /items/{id} {
-      allow read: if true;
-
-      // Allow creates if admin OR on the allowlist
-      allow create: if signedIn() && (
-        isAdmin() ||
-        exists(/databases/$(database)/documents/allowedUsers/$(request.auth.token.email))
-      );
-
-      // Owners can edit/delete their own docs
-      allow update, delete: if signedIn() && request.auth.uid == resource.data.ownerId;
-    }
-
-    // Allowlist docs
-    match /allowedUsers/{email} {
-      // Admin manages the list (read/write)
-      allow read, write: if isAdmin();
-
-      // (Optional) if you still want the client to check its own allowlist doc, add:
-      // allow read: if isAdmin() || (signedIn() && request.auth.token.email == email);
-    }
-  }
-}
-
+/* ===== 7) Upload flow (rules-enforced allowlist + clear errors) ===== */
+fileInput.onchange = async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
 
   // Basic client-side checks
   const isImage = file.type.startsWith('image/');
@@ -179,32 +151,24 @@ service cloud.firestore {
   const user = auth.currentUser;
   if (!user) { alert('Please sign in first.'); return; }
 
-  // Invite-only gate
-  try {
-    const ok = await isAllowedToUpload(user.email);
-    if (!ok) { alert('You are not allowed to upload yet. Ask the board owner to add your email.'); return; }
-  } catch (err) {
-    console.error('Allowlist check failed:', err);
-    alert('Could not verify permissions. Try again in a moment.');
-    return;
-  }
-
   // UI feedback
   const originalLabel = uploadLabel.textContent;
   uploadLabel.textContent = 'Uploading…';
   uploadLabel.style.opacity = 0.6;
   uploadLabel.style.pointerEvents = 'none';
 
-  try {
-    // Storage path
-    const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g, '_')}`;
-    const ref = storage.ref().child(`uploads/${user.uid}/${safeName}`);
+  // Storage path
+  const safeName = `${Date.now()}-${file.name.replace(/[^\w.-]+/g, '_')}`;
+  const ref = storage.ref().child(`uploads/${user.uid}/${safeName}`);
 
-    // Upload
+  try {
+    // Upload to Storage
     await ref.put(file);
+
+    // Get CDN URL
     const url = await ref.getDownloadURL();
 
-    // Save metadata
+    // Create Firestore item (rules will allow only if admin or on allowlist)
     await db.collection('items').add({
       url,
       type: isVideo ? 'video' : 'image',
@@ -214,7 +178,16 @@ service cloud.firestore {
     });
   } catch (err) {
     console.error('Upload failed:', err);
-    alert(`Upload failed: ${err?.message || err}`);
+    // Try to clean up orphaned blob if Firestore write failed
+    try { await ref.delete(); } catch (_) {}
+
+    if (err && (err.code === 'permission-denied' || /PERMISSION/i.test(String(err)))) {
+      alert('Not allowed to upload yet. Ask the board owner to add your email to the allowlist.');
+    } else if (err && /storage|bucket|unauthorized|quota|billing/i.test(String(err))) {
+      alert('Storage error. Make sure Cloud Storage is enabled (may require Blaze billing) and your bucket name matches.');
+    } else {
+      alert(`Upload failed: ${err?.message || err}`);
+    }
   } finally {
     uploadLabel.style.opacity = 1;
     uploadLabel.style.pointerEvents = '';
@@ -230,9 +203,8 @@ const pz = Panzoom(panContent, {
   maxScale: 4,
   minScale: 0.5,
   step: 0.08,
-  contain: 'outside', // allow panning outside container
+  contain: 'outside',
 });
 panContainer.addEventListener('wheel', pz.zoomWithWheel);
 
 /* Hint: two-finger pinch and drag work on touch devices because we set touch-action: none */
-
