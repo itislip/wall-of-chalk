@@ -18,21 +18,20 @@
         <input id="fileInput" type="file" accept="image/*,video/*" hidden />
       </label>
     </div>
-
-    <!-- Admin Panel (only visible to admins) -->
-<section id="adminPanel" class="admin" style="display:none;">
-  <h2>Invite Uploaders</h2>
-  <div class="admin-row">
-    <input id="addEmail" type="email" placeholder="friend@example.com" />
-    <button id="addEmailBtn" class="btn">Add</button>
-  </div>
-  <div class="admin-list">
-    <h3>Allowed Emails</h3>
-    <ul id="allowList"></ul>
-  </div>
-</section>
-
   </header>
+
+  <!-- Admin Panel (only visible to admins) -->
+  <section id="adminPanel" class="admin" style="display:none;">
+    <h2>Invite Uploaders</h2>
+    <div class="admin-row">
+      <input id="addEmail" type="email" placeholder="friend@example.com" />
+      <button id="addEmailBtn" class="btn">Add</button>
+    </div>
+    <div class="admin-list">
+      <h3>Allowed Emails</h3>
+      <ul id="allowList"></ul>
+    </div>
+  </section>
 
   <!-- Pan/zoom viewport -->
   <main id="pan-container">
@@ -41,7 +40,7 @@
     </div>
   </main>
 
-  <!-- Libraries (no build tools) -->
+  <!-- Libraries (compat SDKs) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
@@ -52,3 +51,4 @@
   <script src="app.js"></script>
 </body>
 </html>
+
